@@ -37,13 +37,14 @@ type histogram struct {
 
 // Metric name.
 const (
-	COUNT   = "COUNT"
-	QPS     = "QPS"
-	AVG     = "AVG"
-	MIN     = "MIN"
-	MAX     = "MAX"
-	PER95TH = "PER95TH"
-	PER99TH = "PER99TH"
+	COUNT     = "COUNT"
+	QPS       = "QPS"
+	AVG       = "AVG"
+	MIN       = "MIN"
+	MAX       = "MAX"
+	PER99TH   = "PER99TH"
+	PER999TH  = "PER999TH"
+	PER9999TH = "PER9999TH"
 )
 
 func (h *histogram) Info() ycsb.MeasurementInfo {
@@ -59,19 +60,25 @@ func (h *histogram) Info() ycsb.MeasurementInfo {
 	}
 
 	avg := int64(float64(sum) / float64(count))
-	per95 := int(0)
-	per99 := int(0)
+	per99   := int(0)
+	per999  := int(0)
+	per9999 := int(0)
 
 	opCount := int64(0)
 	for i := 0; i < len(counts); i++ {
 		opCount += counts[i]
 		per := float64(opCount) / float64(count)
-		if per95 == 0 && per >= 0.95 {
-			per95 = h.upperBounds[i]
-		}
 
 		if per99 == 0 && per >= 0.99 {
 			per99 = h.upperBounds[i]
+		}
+		
+		if per999 == 0 && per >= 0.999 {
+			per999 = h.upperBounds[i]
+		}
+		
+		if per9999 == 0 && per >= 0.9999 {
+			per9999 = h.upperBounds[i]
 		}
 	}
 
@@ -83,8 +90,9 @@ func (h *histogram) Info() ycsb.MeasurementInfo {
 	res[AVG] = avg
 	res[MIN] = min
 	res[MAX] = max
-	res[PER95TH] = per95
 	res[PER99TH] = per99
+	res[PER999TH] = per999
+	res[PER9999TH] = per9999
 
 	return newHistogramInfo(res)
 }
@@ -150,19 +158,24 @@ func (h *histogram) Summary() string {
 	}
 
 	avg := int64(float64(sum) / float64(count))
-	per95 := int(0)
 	per99 := int(0)
+	per999  := int(0)
+	per9999 := int(0)
 
 	opCount := int64(0)
 	for i := 0; i < len(counts); i++ {
 		opCount += counts[i]
 		per := float64(opCount) / float64(count)
-		if per95 == 0 && per >= 0.95 {
-			per95 = h.upperBounds[i]
-		}
-
 		if per99 == 0 && per >= 0.99 {
 			per99 = h.upperBounds[i]
+		}
+		
+		if per999 == 0 && per >= 0.999 {
+			per999 = h.upperBounds[i]
+		}
+		
+		if per9999 == 0 && per >= 0.9999 {
+			per9999 = h.upperBounds[i]
 		}
 	}
 
@@ -176,8 +189,9 @@ func (h *histogram) Summary() string {
 	buf.WriteString(fmt.Sprintf("Avg(us): %d, ", avg))
 	buf.WriteString(fmt.Sprintf("Min(us): %d, ", min))
 	buf.WriteString(fmt.Sprintf("Max(us): %d, ", max))
-	buf.WriteString(fmt.Sprintf("95th(us): %d, ", per95))
-	buf.WriteString(fmt.Sprintf("99th(us): %d", per99))
+	buf.WriteString(fmt.Sprintf("99th(us): %d, ", per99))
+	buf.WriteString(fmt.Sprintf("99.9th(us): %d, ", per999))
+	buf.WriteString(fmt.Sprintf("99.99th(us): %d", per9999))
 
 	return buf.String()
 }
