@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -26,8 +27,8 @@ import (
 )
 
 type histogram struct {
-	upperBounds []int
-	counts      []int64
+	sync.RWMutex
+	boundCounts map[int]int64
 	count       int64
 	sum         int64
 	min         int64
@@ -54,31 +55,38 @@ func (h *histogram) Info() ycsb.MeasurementInfo {
 	sum := atomic.LoadInt64(&h.sum)
 	count := atomic.LoadInt64(&h.count)
 
-	counts := make([]int64, len(h.counts))
-	for i := 0; i < len(h.upperBounds); i++ {
-		counts[i] = atomic.LoadInt64(&h.counts[i])
+	bounds := make([]int, len(h.boundCounts))
+	var i = 0
+	h.RLock()
+	for bound := range h.boundCounts {
+		bounds[i] = bound
+		i += 1
 	}
+	h.RUnlock()
+	sort.Ints(bounds)
 
 	avg := int64(float64(sum) / float64(count))
-	per99   := int(0)
-	per999  := int(0)
-	per9999 := int(0)
+	per99 := 0
+	per999 := 0
+	per9999 := 0
 
 	opCount := int64(0)
-	for i := 0; i < len(counts); i++ {
-		opCount += counts[i]
+	for _, bound := range bounds {
+		h.RLock()
+		_opCount := h.boundCounts[bound]
+		h.RUnlock()
+		opCount += _opCount
 		per := float64(opCount) / float64(count)
-
 		if per99 == 0 && per >= 0.99 {
-			per99 = h.upperBounds[i]
+			per99 = (bound + 1) * 1000
 		}
-		
+
 		if per999 == 0 && per >= 0.999 {
-			per999 = h.upperBounds[i]
+			per999 = (bound + 1) * 1000
 		}
-		
+
 		if per9999 == 0 && per >= 0.9999 {
-			per9999 = h.upperBounds[i]
+			per9999 = (bound + 1) * 1000
 		}
 	}
 
@@ -100,13 +108,7 @@ func (h *histogram) Info() ycsb.MeasurementInfo {
 func newHistogram(_ *properties.Properties) *histogram {
 	h := new(histogram)
 	h.startTime = time.Now()
-	// TODO: support defining buckets from properties
-	// bucket unit is 1ms
-	h.upperBounds = make([]int, 1024)
-	for i := 0; i < len(h.upperBounds); i++ {
-		h.upperBounds[i] = (i + 1) * 1000
-	}
-	h.counts = make([]int64, len(h.upperBounds))
+	h.boundCounts = make(map[int]int64)
 	h.min = math.MaxInt64
 	h.max = math.MinInt64
 	return h
@@ -117,11 +119,14 @@ func (h *histogram) Measure(latency time.Duration) {
 
 	atomic.AddInt64(&h.sum, n)
 	atomic.AddInt64(&h.count, 1)
-
-	i := sort.SearchInts(h.upperBounds, int(n))
-	if i < len(h.counts) {
-		atomic.AddInt64(&h.counts[i], 1)
+	bound := int(n/1000)
+	h.Lock()
+	if _, ok := h.boundCounts[bound]; ok {
+    	h.boundCounts[bound] += 1
+	} else {
+		h.boundCounts[bound] = 1
 	}
+	h.Unlock()
 
 	for {
 		oldMin := atomic.LoadInt64(&h.min)
@@ -152,30 +157,38 @@ func (h *histogram) Summary() string {
 	sum := atomic.LoadInt64(&h.sum)
 	count := atomic.LoadInt64(&h.count)
 
-	counts := make([]int64, len(h.counts))
-	for i := 0; i < len(h.upperBounds); i++ {
-		counts[i] = atomic.LoadInt64(&h.counts[i])
+	bounds := make([]int, len(h.boundCounts))
+	var i = 0
+	h.RLock()
+	for bound := range h.boundCounts {
+		bounds[i] = bound
+		i += 1
 	}
+	h.RUnlock()
+	sort.Ints(bounds)
 
 	avg := int64(float64(sum) / float64(count))
-	per99 := int(0)
-	per999  := int(0)
-	per9999 := int(0)
+	per99 := 0
+	per999 := 0
+	per9999 := 0
 
 	opCount := int64(0)
-	for i := 0; i < len(counts); i++ {
-		opCount += counts[i]
+	for _, bound := range bounds {
+		h.RLock()
+		_opCount := h.boundCounts[bound]
+		h.RUnlock()
+		opCount += _opCount
 		per := float64(opCount) / float64(count)
 		if per99 == 0 && per >= 0.99 {
-			per99 = h.upperBounds[i]
+			per99 = (bound + 1) * 1000
 		}
-		
+
 		if per999 == 0 && per >= 0.999 {
-			per999 = h.upperBounds[i]
+			per999 = (bound + 1) * 1000
 		}
-		
+
 		if per9999 == 0 && per >= 0.9999 {
-			per9999 = h.upperBounds[i]
+			per9999 = (bound + 1) * 1000
 		}
 	}
 
