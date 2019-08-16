@@ -30,6 +30,7 @@ require (
 	github.com/lib/pq v0.0.0-20181016162627-9eb73efc1fcc
 	github.com/magiconair/properties v1.8.0
 	github.com/mattn/go-sqlite3 v1.10.0
+	github.com/orcaman/concurrent-map v0.0.0-20190314100340-2693aad1ed75
 	github.com/pingcap/errors v0.11.1
 	github.com/pingcap/kvproto v0.0.0-20190506024016-26344dff8f48 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20190512091148-babf20351dd7 // indirect

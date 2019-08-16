@@ -23,12 +23,13 @@ import (
 	"time"
 
 	"github.com/magiconair/properties"
+	"github.com/pingcap/go-ycsb/pkg/util"
 	"github.com/pingcap/go-ycsb/pkg/ycsb"
 )
 
 type histogram struct {
 	sync.RWMutex
-	boundCounts   map[int]int64
+	boundCounts   util.ConcurrentMap
 	boundInterval int64
 	count         int64
 	sum           int64
@@ -61,7 +62,7 @@ func (h *histogram) Info() ycsb.MeasurementInfo {
 func newHistogram(p *properties.Properties) *histogram {
 	h := new(histogram)
 	h.startTime = time.Now()
-	h.boundCounts = make(map[int]int64)
+	h.boundCounts = util.New()
 	h.boundInterval = p.GetInt64(HistogramBuckets, HistogramBucketsDefault)
 	h.min = math.MaxInt64
 	h.max = math.MinInt64
@@ -74,13 +75,13 @@ func (h *histogram) Measure(latency time.Duration) {
 	atomic.AddInt64(&h.sum, n)
 	atomic.AddInt64(&h.count, 1)
 	bound := int(n / h.boundInterval)
-	h.Lock()
-	if _, ok := h.boundCounts[bound]; ok {
-		h.boundCounts[bound] += 1
-	} else {
-		h.boundCounts[bound] = 1
-	}
-	h.Unlock()
+	h.boundCounts.Upsert(bound, 1, func(ok bool, v int64, value int64) int64 {
+		if ok {
+			return v + value
+		} else {
+			return v
+		}
+	})
 
 	for {
 		oldMin := atomic.LoadInt64(&h.min)
@@ -128,14 +129,7 @@ func (h *histogram) getInfo() map[string]interface{} {
 	sum := atomic.LoadInt64(&h.sum)
 	count := atomic.LoadInt64(&h.count)
 
-	h.RLock()
-	bounds := make([]int, len(h.boundCounts))
-	var i = 0
-	for bound := range h.boundCounts {
-		bounds[i] = bound
-		i += 1
-	}
-	h.RUnlock()
+	bounds := h.boundCounts.Keys()
 	sort.Ints(bounds)
 
 	avg := int64(float64(sum) / float64(count))
@@ -145,9 +139,8 @@ func (h *histogram) getInfo() map[string]interface{} {
 
 	opCount := int64(0)
 	for _, bound := range bounds {
-		h.RLock()
-		opCount += h.boundCounts[bound]
-		h.RUnlock()
+		count, _ := h.boundCounts.Get(bound)
+		opCount += count
 		per := float64(opCount) / float64(count)
 		if per99 == 0 && per >= 0.99 {
 			per99 = (bound + 1) * 1000
