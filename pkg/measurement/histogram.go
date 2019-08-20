@@ -78,9 +78,8 @@ func (h *histogram) Measure(latency time.Duration) {
 	h.boundCounts.Upsert(bound, 1, func(ok bool, v int64, value int64) int64 {
 		if ok {
 			return v + value
-		} else {
-			return v
 		}
+		return v
 	})
 
 	for {

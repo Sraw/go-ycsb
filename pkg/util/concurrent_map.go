@@ -5,6 +5,11 @@ import (
 	"sync"
 )
 
+/*
+	This module is modified from github.com/orcaman/concurrent-map.
+	MIT license.
+ */
+
 var SHARD_COUNT = 32
 
 // A "thread" safe map of type int:int64.
